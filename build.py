@@ -51,7 +51,7 @@ def games(events):
         desc = clean(e.get("DESCRIPTION", ""))
         away = bool(re.search(r"\s@\s", title)) or desc.lower().startswith("away")
         out.append(dict(uid=e["UID"], title=title.replace("[TBD] ", ""), tbd=tbd, start=s, end=end,
-                        loc=re.sub(r"\s+", " ", clean(e.get("LOCATION", ""))), desc=desc, away=away))
+                        loc=re.sub(r"\s+", " ", clean(e.get("LOCATION", ""))), raw_loc=clean(e.get("LOCATION", "")), desc=desc, away=away))
     out.sort(key=lambda g: (g["start"] if g["tbd"] else g["start"].date(), 1 if g["tbd"] else 0,
                             g["start"].isoformat()))
     return out
@@ -99,6 +99,15 @@ def short(g):
     return ("@ " if g["away"] else "vs ") + t
 
 
+def address(g):
+    loc = g["loc"]
+    if g["tbd"]:  # feed repeats the city, e.g. "Wisconsin Dells  Wisconsin Dells WI"
+        loc = re.sub(r"^(.+?)\s{2,}\1\b", r"\1", g["raw_loc"]).strip()
+        return loc
+    v = venue(g)
+    return loc[len(v):].strip() if loc.startswith(v) else loc
+
+
 def venue(g):
     if g["tbd"]:
         return ""
@@ -119,6 +128,7 @@ def write_pdf(gs, path):
     c.setTitle(f"{TEAM} Game Schedule")
     gm = ParagraphStyle("g", fontName="Helvetica-Bold", fontSize=7, leading=8)
     gv = ParagraphStyle("v", fontName="Helvetica-Oblique", fontSize=6, leading=7, textColor=colors.HexColor("#555555"))
+    ga = ParagraphStyle("a", fontName="Helvetica", fontSize=5.5, leading=6.5, textColor=colors.HexColor("#444444"))
     by = {}
     for g in gs:
         by.setdefault(g["start"] if g["tbd"] else g["start"].date(), []).append(g)
@@ -157,12 +167,14 @@ def write_pdf(gs, path):
                     parts = [("TBD " if g["tbd"] else f"{g['start']:%I:%M%p}".lstrip("0").lower() + " ") + short(g)]
                     p1 = Paragraph(html.escape(parts[0]), gm)
                     p2 = Paragraph(html.escape(venue(g)), gv)
-                    _, h1 = p1.wrap(cw - 8, 100); _, h2 = p2.wrap(cw - 8, 100)
-                    hh = h1 + h2 + 3
+                    p3 = Paragraph(html.escape(address(g)), ga)
+                    _, h1 = p1.wrap(cw - 8, 100); _, h2 = p2.wrap(cw - 8, 100); _, h3 = p3.wrap(cw - 8, 100)
+                    hh = h1 + h2 + h3 + 3
                     c.setFillColor(colors.HexColor("#fff3cd") if g["tbd"] else
                                    colors.HexColor("#fde2e2") if g["away"] else colors.HexColor("#dff0d8"))
                     c.rect(x + 2, cy - hh, cw - 4, hh, fill=1, stroke=0)
                     p1.drawOn(c, x + 4, cy - h1 - 1); p2.drawOn(c, x + 4, cy - h1 - h2 - 1)
+                    p3.drawOn(c, x + 4, cy - h1 - h2 - h3 - 1)
                     cy -= hh + 2
         c.setFont("Helvetica", 8); c.setFillColor(colors.grey)
         c.drawString(L, 0.3*inch, f"Updated {upd}. Times are Central. Green = home, red = away.")
