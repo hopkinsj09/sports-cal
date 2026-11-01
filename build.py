@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("America/Chicago")
 TEAM = "10U A2 Garrett"
-CAL_NAME = f"{TEAM} Games"
+CAL_NAME = "Connor's Hockey Schedule"
 GAME_RE = re.compile(r"\s(vs|@)\s", re.I)
 NOT_GAME = re.compile(r"practice|pictures|serving night", re.I)
 
@@ -127,10 +127,11 @@ def write_pdf(gs, path):
     from reportlab.platypus import Paragraph
     W, H = landscape(letter)
     c = canvas.Canvas(path, pagesize=(W, H), pageCompression=1)
-    c.setTitle(f"{TEAM} Game Schedule")
-    gm = ParagraphStyle("g", fontName="Helvetica-Bold", fontSize=7, leading=8)
-    gv = ParagraphStyle("v", fontName="Helvetica-Oblique", fontSize=6, leading=7, textColor=colors.HexColor("#555555"))
-    ga = ParagraphStyle("a", fontName="Helvetica", fontSize=5.5, leading=6.5, textColor=colors.HexColor("#444444"))
+    c.setTitle(CAL_NAME)
+    def styles(k):
+        return (ParagraphStyle("g", fontName="Helvetica-Bold", fontSize=7*k, leading=8*k),
+                ParagraphStyle("v", fontName="Helvetica-Oblique", fontSize=6*k, leading=7*k, textColor=colors.HexColor("#555555")),
+                ParagraphStyle("a", fontName="Helvetica", fontSize=5.5*k, leading=6.5*k, textColor=colors.HexColor("#444444")))
     by = {}
     for g in gs:
         by.setdefault(g["start"] if g["tbd"] else g["start"].date(), []).append(g)
@@ -143,19 +144,38 @@ def write_pdf(gs, path):
     L, R, T, B = 0.4*inch, W - 0.4*inch, H - 0.95*inch, 0.55*inch
     cw = (R - L) / 7
     calendar.setfirstweekday(6)
+    def cell_items(y, m, day, k):
+        gm, gv, ga = styles(k)
+        items = []
+        for g in by.get(date(y, m, day), []) if day else []:
+            t = ("TBD " if g["tbd"] else f"{g['start']:%I:%M%p}".lstrip("0").lower() + " ") + short(g)
+            ps = [Paragraph(html.escape(t), gm), Paragraph(html.escape(venue(g)), gv), Paragraph(html.escape(address(g)), ga)]
+            hs = [p.wrap(cw - 8, 1000)[1] for p in ps]
+            items.append((g, ps, hs, sum(hs) + 3))
+        return items
+
     for y, m in months:
         weeks = calendar.monthcalendar(y, m)
-        ch = (T - 0.25*inch - B) / len(weeks)
+        avail = T - 0.25*inch - B
+        base = avail / len(weeks)
+        for k in (1.0, 0.92, 0.85, 0.78, 0.7, 0.62, 0.55):  # shrink text until every row fits
+            cells = [[cell_items(y, m, d, k) for d in wk] for wk in weeks]
+            need = [max(15 + sum(it[3] + 2 for it in cell) + 3 for cell in row) for row in cells]
+            rows = [max(n, 0.5*base) for n in need]
+            if sum(rows) <= avail: break
+        extra = (avail - sum(rows)) / len(rows)
+        rows = [h + max(extra, 0) for h in rows]
         c.setFont("Helvetica-Bold", 22); c.setFillColor(colors.black)
         c.drawString(L, H - 0.6*inch, f"{calendar.month_name[m]} {y}")
         c.setFont("Helvetica", 9); c.setFillColor(colors.grey)
-        c.drawRightString(R, H - 0.6*inch, f"{TEAM} games  |  AWAY = @  |  shaded = time TBD")
+        c.drawRightString(R, H - 0.6*inch, f"{CAL_NAME}  |  AWAY = @  |  shaded = time TBD")
         for i, n in enumerate(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]):
             c.setFillColor(colors.HexColor("#333333")); c.rect(L + i*cw, T - 0.25*inch, cw, 0.25*inch, fill=1, stroke=0)
             c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 9)
             c.drawCentredString(L + i*cw + cw/2, T - 0.18*inch, n)
+        top = T - 0.25*inch
         for r, wk in enumerate(weeks):
-            top = T - 0.25*inch - r*ch
+            ch = rows[r]
             for i, day in enumerate(wk):
                 x = L + i*cw
                 c.setStrokeColor(colors.HexColor("#999999")); c.setLineWidth(0.5)
@@ -165,19 +185,14 @@ def write_pdf(gs, path):
                 c.setFillColor(colors.black); c.setFont("Helvetica-Bold", 9)
                 c.drawString(x + 3, top - 11, str(day))
                 cy = top - 15
-                for g in by.get(date(y, m, day), []):
-                    parts = [("TBD " if g["tbd"] else f"{g['start']:%I:%M%p}".lstrip("0").lower() + " ") + short(g)]
-                    p1 = Paragraph(html.escape(parts[0]), gm)
-                    p2 = Paragraph(html.escape(venue(g)), gv)
-                    p3 = Paragraph(html.escape(address(g)), ga)
-                    _, h1 = p1.wrap(cw - 8, 100); _, h2 = p2.wrap(cw - 8, 100); _, h3 = p3.wrap(cw - 8, 100)
-                    hh = h1 + h2 + h3 + 3
+                for g, (p1, p2, p3), (h1, h2, h3), hh in cells[r][i]:
                     c.setFillColor(colors.HexColor("#fff3cd") if g["tbd"] else
                                    colors.HexColor("#fde2e2") if g["away"] else colors.HexColor("#dff0d8"))
                     c.rect(x + 2, cy - hh, cw - 4, hh, fill=1, stroke=0)
                     p1.drawOn(c, x + 4, cy - h1 - 1); p2.drawOn(c, x + 4, cy - h1 - h2 - 1)
                     p3.drawOn(c, x + 4, cy - h1 - h2 - h3 - 1)
                     cy -= hh + 2
+            top -= ch
         c.setFont("Helvetica", 8); c.setFillColor(colors.grey)
         c.drawString(L, 0.3*inch, f"Updated {upd}. Times are Central. Green = home, red = away.")
         c.showPage()
