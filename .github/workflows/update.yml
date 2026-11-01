@@ -14,6 +14,8 @@ jobs:
         with: {python-version: "3.12"}
       - run: pip install reportlab
       - run: python build.py
+        env:
+          CROSSBAR_FEED_URL: ${{ secrets.CROSSBAR_FEED_URL }}
       - name: Commit if ics changed
         run: |
           git config user.name "schedule-bot"; git config user.email "bot@users.noreply.github.com"

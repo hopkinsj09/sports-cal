@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Pull games from the Crossbar iCal feed; write docs/schedule.ics and docs/schedule.pdf."""
-import html, re, sys, urllib.request
+import html, os, re, sys, urllib.request
 from datetime import datetime, timezone, date
 from zoneinfo import ZoneInfo
 
-SRC = "https://www.accounts.crossbar.org/calendar/ical/302628"
 TZ = ZoneInfo("America/Chicago")
 TEAM = "10U A2 Garrett"
 CAL_NAME = f"{TEAM} Games"
@@ -15,7 +14,10 @@ NOT_GAME = re.compile(r"practice|pictures|serving night", re.I)
 def fetch(path=None):
     if path:
         return open(path, encoding="utf-8").read()
-    req = urllib.request.Request(SRC, headers={"User-Agent": "sports-cal/1.0"})
+    src = os.environ.get("CROSSBAR_FEED_URL", "").strip()
+    if not src.startswith("https://"):
+        sys.exit("Set CROSSBAR_FEED_URL to the https:// feed link (a GitHub secret in Actions), or pass a local .ics path.")
+    req = urllib.request.Request(src, headers={"User-Agent": "sports-cal/1.0"})
     return urllib.request.urlopen(req, timeout=30).read().decode("utf-8")
 
 
