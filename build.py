@@ -93,43 +93,81 @@ def write_ics(gs, path):
     open(path, "w", newline="", encoding="utf-8").write("\r\n".join(fold(l) for l in L) + "\r\n")
 
 
+def short(g):
+    t = g["title"].replace(TEAM, "").strip()
+    t = re.sub(r"^(vs|@)\s+", "", t)
+    return ("@ " if g["away"] else "vs ") + t
+
+
+def venue(g):
+    if g["tbd"]:
+        return ""
+    m = re.match(r"(.*?)(?=\s+\d|\s{2}|$)", g["loc"])
+    return m.group(1).strip() if m else ""
+
+
 def write_pdf(gs, path):
+    import calendar
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.pagesizes import letter, landscape
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    sm = ParagraphStyle("sm", fontName="Helvetica", fontSize=8.5, leading=10.5)
-    smb = ParagraphStyle("smb", parent=sm, fontName="Helvetica-Bold")
-    H = ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=18, leading=24, spaceAfter=4)
-    sub = ParagraphStyle("s", fontName="Helvetica", fontSize=9, textColor=colors.grey, spaceAfter=8)
-    P = lambda t, st=sm: Paragraph(html.escape(t), st)
-    rows = [[P("Date", smb), P("Time", smb), P("Game", smb), P("Location / Notes", smb)]]
-    tbd_rows = []
+    from reportlab.pdfgen import canvas
+    from reportlab.platypus import Paragraph
+    W, H = landscape(letter)
+    c = canvas.Canvas(path, pagesize=(W, H), pageCompression=1)
+    c.setTitle(f"{TEAM} Game Schedule")
+    gm = ParagraphStyle("g", fontName="Helvetica-Bold", fontSize=7, leading=8)
+    gv = ParagraphStyle("v", fontName="Helvetica-Oblique", fontSize=6, leading=7, textColor=colors.HexColor("#555555"))
+    by = {}
     for g in gs:
-        s = g["start"]
-        d = f"{s:%a %b} {s.day}"
-        t = "TBD" if g["tbd"] else f"{s:%I:%M %p}".lstrip("0")
-        place = g["loc"] + (f"\n{g['desc']}" if g["desc"] else "")
-        cell = Paragraph(html.escape(place).replace("\n", "<br/>"), sm)
-        tag = "AWAY  " if g["away"] else ""
-        rows.append([P(d), P(t), P(tag + g["title"]), cell])
-        if g["tbd"]: tbd_rows.append(len(rows) - 1)
-    tbl = Table(rows, colWidths=[0.95*inch, 0.75*inch, 2.9*inch, 2.4*inch], repeatRows=1)
-    st = [("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#dddddd")), ("VALIGN", (0, 0), (-1, -1), "TOP"),
-          ("LINEBELOW", (0, 0), (-1, -1), 0.25, colors.HexColor("#bbbbbb")),
-          ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]
-    for r in tbd_rows: st.append(("BACKGROUND", (0, r), (-1, r), colors.HexColor("#fff3cd")))
-    tbl.setStyle(TableStyle(st))
+        by.setdefault(g["start"] if g["tbd"] else g["start"].date(), []).append(g)
+    d0, d1 = min(by), max(by)
+    months, y, m = [], d0.year, d0.month
+    while (y, m) <= (d1.year, d1.month):
+        months.append((y, m)); m += 1
+        if m == 13: y, m = y + 1, 1
     upd = datetime.now(TZ).strftime("%b %d, %Y")
-    foot = lambda c, d: (c.setFont("Helvetica", 8), c.setFillColor(colors.grey),
-                         c.drawString(0.5*inch, 0.35*inch, f"Updated {upd}. Times are Central. Shaded = date/time TBD."),
-                         c.drawRightString(8*inch, 0.35*inch, f"Page {d.page}"))
-    doc = SimpleDocTemplate(path, pagesize=letter, leftMargin=0.5*inch, rightMargin=0.5*inch,
-                            topMargin=0.5*inch, bottomMargin=0.6*inch, title=f"{TEAM} Game Schedule")
-    doc.build([Paragraph(f"{TEAM} — Game Schedule", H),
-               Paragraph(f"{len(gs)} games. Home games unmarked; AWAY = @ opponent.", sub), tbl],
-              onFirstPage=foot, onLaterPages=foot)
+    L, R, T, B = 0.4*inch, W - 0.4*inch, H - 0.95*inch, 0.55*inch
+    cw = (R - L) / 7
+    calendar.setfirstweekday(6)
+    for y, m in months:
+        weeks = calendar.monthcalendar(y, m)
+        ch = (T - 0.25*inch - B) / len(weeks)
+        c.setFont("Helvetica-Bold", 22); c.setFillColor(colors.black)
+        c.drawString(L, H - 0.6*inch, f"{calendar.month_name[m]} {y}")
+        c.setFont("Helvetica", 9); c.setFillColor(colors.grey)
+        c.drawRightString(R, H - 0.6*inch, f"{TEAM} games  |  AWAY = @  |  shaded = time TBD")
+        for i, n in enumerate(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]):
+            c.setFillColor(colors.HexColor("#333333")); c.rect(L + i*cw, T - 0.25*inch, cw, 0.25*inch, fill=1, stroke=0)
+            c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 9)
+            c.drawCentredString(L + i*cw + cw/2, T - 0.18*inch, n)
+        for r, wk in enumerate(weeks):
+            top = T - 0.25*inch - r*ch
+            for i, day in enumerate(wk):
+                x = L + i*cw
+                c.setStrokeColor(colors.HexColor("#999999")); c.setLineWidth(0.5)
+                c.setFillColor(colors.HexColor("#f2f2f2") if day == 0 else colors.white)
+                c.rect(x, top - ch, cw, ch, fill=1, stroke=1)
+                if not day: continue
+                c.setFillColor(colors.black); c.setFont("Helvetica-Bold", 9)
+                c.drawString(x + 3, top - 11, str(day))
+                cy = top - 15
+                for g in by.get(date(y, m, day), []):
+                    parts = [("TBD " if g["tbd"] else f"{g['start']:%I:%M%p}".lstrip("0").lower() + " ") + short(g)]
+                    p1 = Paragraph(html.escape(parts[0]), gm)
+                    p2 = Paragraph(html.escape(venue(g)), gv)
+                    _, h1 = p1.wrap(cw - 8, 100); _, h2 = p2.wrap(cw - 8, 100)
+                    hh = h1 + h2 + 3
+                    c.setFillColor(colors.HexColor("#fff3cd") if g["tbd"] else
+                                   colors.HexColor("#fde2e2") if g["away"] else colors.HexColor("#dff0d8"))
+                    c.rect(x + 2, cy - hh, cw - 4, hh, fill=1, stroke=0)
+                    p1.drawOn(c, x + 4, cy - h1 - 1); p2.drawOn(c, x + 4, cy - h1 - h2 - 1)
+                    cy -= hh + 2
+        c.setFont("Helvetica", 8); c.setFillColor(colors.grey)
+        c.drawString(L, 0.3*inch, f"Updated {upd}. Times are Central. Green = home, red = away.")
+        c.showPage()
+    c.save()
 
 
 if __name__ == "__main__":
