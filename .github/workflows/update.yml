@@ -1,3 +1,4 @@
+# Rebuilds docs/schedule.ics and docs/schedule.pdf from the Crossbar feed every 6 hours.
 name: Update schedule
 on:
   schedule: [{cron: "17 */6 * * *"}]
