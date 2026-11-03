@@ -8,25 +8,6 @@ X-WR-TIMEZONE:America/Chicago
 REFRESH-INTERVAL;VALUE=DURATION:PT6H
 X-PUBLISHED-TTL:PT6H
 BEGIN:VEVENT
-UID:9135450277858@www.accounts.crossbar.org
-DTSTAMP:20260101T000000Z
-SUMMARY:10U A2 Garrett vs St. Peter's 10U-A2- Hensley (Rolling Thunder Tou
- rnament)
-DTSTART:20261003T115000Z
-DTEND:20261003T125000Z
-LOCATION:Ice Zone 5555 St Louis Mls Cir Hazelwood MO 63042
-DESCRIPTION:Home team \, White Jersey/socks
-END:VEVENT
-BEGIN:VEVENT
-UID:9459489277858@www.accounts.crossbar.org
-DTSTAMP:20260101T000000Z
-SUMMARY:10U A2 Garrett vs Kirkwood A2 (Rolling Thunder Tournament)
-DTSTART:20261003T223000Z
-DTEND:20261003T233000Z
-LOCATION:Wentzville Ice Arena 910 Main Plaza Dr Wentzville MO 63385
-DESCRIPTION:@Wentville-Blue\, Home team \, White jersey/socks
-END:VEVENT
-BEGIN:VEVENT
 UID:9135455277858@www.accounts.crossbar.org
 DTSTAMP:20260101T000000Z
 SUMMARY:10U A2 Garrett vs Rolling Thunder Tourney Championship Game: STP-H
